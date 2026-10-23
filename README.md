@@ -65,23 +65,27 @@ E:\houduan\dev-tools\apache-maven-3.9.9\bin\mvn -s E:\houduan\dev-tools\settings
 > 把“重启”搞成了分钟级。打 fat jar（spring-boot-maven-plugin）后，
 > 启动 = `java -jar` 一条命令，Spring Boot 自报启动耗时约 1.6-2 秒。
 
-## 如何验证（M2 验收）
+## 如何验证（55 条自动化验收）
 
-服务启动后另开一个终端：
+服务启动后另开一个终端，六套验收脚本按模块逐一或全部运行：
 
 ```bash
-python E:\houduan\easychat-rebuild\tools\m2_acceptance.py
+python E:\houduan\easychat-rebuild\tools\m2_acceptance.py    # 注册/登录/心跳/会话（9 例）
+python E:\houduan\easychat-rebuild\tools\m4_acceptance.py    # 好友闭环（9 例，双用户真实场景）
+python E:\houduan\easychat-rebuild\tools\m5a_acceptance.py   # 群组+单聊（9 例）
+python E:\houduan\easychat-rebuild\tools\m5b_acceptance.py   # 群聊扇出+入群审批（7 例）
+python E:\houduan\easychat-rebuild\tools\m6a_acceptance.py   # REST 查询+鉴权+Redis（10 例）
+python E:\houduan\easychat-rebuild\tools\m6b_acceptance.py   # REST 修改类+模糊查询+图片（11 例）
 ```
 
-9 条验收用例：注册 / 重名拒绝 / 错密码 / 不存在用户 / 正常登录发 token /
-心跳 / 单会话替换（第二设备登录踢掉第一台）。
+合计 55 条，全部通过。另有对拍资产在 `test-assets/`（原版 Postman 集合 + JMeter 计划，
+端口已改复刻版，含 3500 请求压测的 JTL 原始数据与 HTML 聚合报告）。
 
 ## 协议速查
 
 帧格式：`魔数4B(0x12345678) | 版本1B(1) | 序列化算法1B(1=JSON) | 指令1B | 长度4B | JSON体`
 
-已实现指令：登录(1/2)、注册(21/22)、心跳(26/27)。
-待实现：好友(7/8/9/19/20)、群组(10-18/29-33)、消息(5/6/15/16/25)。
+指令实现清单见上方「指令实现清单」表——28 个 TCP 指令号全部实现并验收。
 
 ## 目录结构
 
@@ -90,17 +94,27 @@ src/main/java/com/example/easychat/
 ├── Application.java      # Spring Boot 入口（M3 起）
 ├── protocol/             # 协议常量与 Packet 基类（魔数/指令表/序列化算法）
 ├── codec/                # Spliter 拆包 + PacketCodec 编解码 + PacketRegistry 指令注册表
-├── packet/               # 各指令的数据包（login/register/heartbeat/friend，M5 扩充）
+├── packet/               # 各指令的数据包（login/register/heartbeat/friend/group/message）
 ├── session/              # SessionUtil 会话表（token↔Channel，单会话管理）
-├── mapper/               # MyBatis-Plus Mapper（UserMapper/FriendMapper）
-├── service/              # UserService/MyBatisUserService/FriendService
-├── model/                # User/UserFriend 实体
-├── handler/              # 一包一处理器：Register/Login/Heartbeat/AddUser/AcceptReq
+├── mapper/               # MyBatis-Plus Mapper（User/Friend/Group/GroupMember/Message）
+├── service/              # UserService/FriendService/GroupService/MessageService/OnlineStatusService/ImageService
+├── model/                # User/UserFriend/Group/GroupMember/Message 实体
+├── handler/              # 一包一处理器：Register/Login/Heartbeat/AddUser/AcceptReq/CreateGroup/InviteGroup/AcceptGroup/GroupMessage/ApplyGroup/AllowGroup/Message
+├── controller/           # REST 层：查询类（User/Group/System）+ 写类（UserWrite/GroupWrite）+ Image
+├── common/               # Result 统一响应 + ResultCode 错误码
+├── config/               # AuthInterceptor/WebMvcConfig/RedisConfig/GlobalExceptionHandler
 └── server/               # NettyServer + NettyStarter（Spring 就绪后启动 Netty）
 tools/
-├── m2_acceptance.py      # M2 验收脚本（9 例）
-├── m4_acceptance.py      # M4 验收脚本（9 例，双用户好友闭环）
+├── m2_acceptance.py      # M2 验收（9 例）
+├── m4_acceptance.py      # M4 好友闭环（9 例）
+├── m5a_acceptance.py     # M5a 群组+单聊（9 例）
+├── m5b_acceptance.py     # M5b 群聊+审批（7 例）
+├── m6a_acceptance.py     # M6a REST 查询+鉴权（10 例）
+├── m6b_acceptance.py     # M6b REST 修改+图片（11 例）
 └── tcp_client_18001.py   # 协议客户端（端口 18001）
+test-assets/
+├── postman/              # 移植到复刻版端口的 Postman 集合
+└── jmeter/               # 压测计划 + JTL 原始数据 + HTML 聚合报告（51.55 TPS）
 ```
 
 ## 开发踩坑记录（面试谈资）
