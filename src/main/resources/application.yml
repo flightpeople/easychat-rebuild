@@ -1,0 +1,43 @@
+# EasyChat-Rebuild 应用配置（M3）
+
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/easychat_rebuild?useUnicode=true&characterEncoding=utf8&serverTimezone=GMT%2B8&allowPublicKeyRetrieval=true&useSSL=false
+    username: root
+    # 密码从环境变量读（公开仓库不放明文凭据；本地默认值仅方便开发，生产必须用环境变量注入）
+    password: ${MYSQL_PASSWORD:123456}
+    # HikariCP 连接池（Spring Boot 默认实现，无需引依赖）：
+    # 数据库连接建立开销大（TCP+鉴权），池化复用；maximum-pool-size 按并发估算，
+    # IM 登录是短平快操作，10 条足够，盲目调大反而拖垮 MySQL。
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      password:
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+
+# M6a：REST 端口 19005（TCP 侧 18001 不变——双通道两个端口）
+server:
+  port: 19005
+
+# M6b：图片本地存储目录（生产应换对象存储 OSS/COS + CDN）
+pic:
+  save:
+    path: E:/houduan/easychat-rebuild/pics/
+
+mybatis-plus:
+  configuration:
+    # 下划线转驼峰：原版 EasyChatServer 没开这个，导致 Mapper SQL 里写 groupName
+    # 对不上表列 group_name（我们测试原版时抓到的 BUG-001）——复刻版默认开启，
+    # 并且这段注释本身就是“测试反哺开发”的案例。
+    map-underscore-to-camel-case: true
+    # 开发期把 SQL 打到控制台（看得见每条查询）；生产环境应关闭（日志量太大）
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl

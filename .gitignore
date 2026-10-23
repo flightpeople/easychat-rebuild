@@ -1,0 +1,19 @@
+# 构建产物
+target/
+
+# 日志
+*.log
+
+# 本地运行时文件（图片上传目录、本地配置）
+pics/
+uploads/
+application-local.yml
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.iml
+.vscode/

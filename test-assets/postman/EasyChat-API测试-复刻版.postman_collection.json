@@ -1,0 +1,833 @@
+{
+	"info": {
+		"name": "EasyChat API 接口测试（真实端点版）",
+		"description": "EasyChatServer REST 接口测试集合。端点来自源码交叉验证（非文档）。使用前提：服务已部署（默认 http://127.0.0.1:119005）；登录/注册为 TCP 协议，需先用 scripts/tcp_client.py 登录获取 token，填入集合变量 token。",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://127.0.0.1:119005"
+		},
+		{
+			"key": "token",
+			"value": ""
+		},
+		{
+			"key": "userId",
+			"value": ""
+		}
+	],
+	"item": [
+		{
+			"name": "0-前置说明",
+			"item": [
+				{
+					"name": "README-如何获取token",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/system/onlineNum",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"system",
+								"onlineNum"
+							]
+						},
+						"description": "【前置步骤】登录/注册是 TCP 协议（Netty 18001 端口），不是 REST。获取 token 方式：运行 scripts/tcp_client.py <用户名> <密码>，从登录响应中复制 token 和 userId，粘贴到本集合变量（编辑集合 → Variables → token/userId）。协议：4字节魔数0x12345678 + 1字节版本 + 1字节序列化算法(1=JSON) + 1字节指令 + 4字节长度 + JSON体；登录指令=1，注册=21，心跳=26。"
+					}
+				}
+			]
+		},
+		{
+			"name": "1-鉴权测试",
+			"item": [
+				{
+					"name": "TC-AUTH-001 无token访问（期望10003）",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users"
+							]
+						},
+						"description": "不带 token 头，期望 code=10003（请求头中没有携带token）"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+									"pm.test('code=10003 无token', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.code).to.eql('10003');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "TC-AUTH-002 非法token（期望10004）",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "token",
+								"value": "invalid-token-xyz"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/users",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users"
+							]
+						},
+						"description": "带假 token，期望 code=10004（请求token不合法）"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('code=10004 token不合法', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.code).to.eql('10004');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "TC-AUTH-003 有效token访问好友列表",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "token",
+								"value": "{{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/users",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users"
+							]
+						},
+						"description": "带有效 token，期望 code=0 且 data 为数组"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('code=0 成功', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.code).to.eql('0');",
+									"    pm.expect(json.data).to.be.an('array');",
+									"});"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "2-用户模块",
+			"item": [
+				{
+					"name": "TC-USER-001 查询用户信息",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "token",
+								"value": "{{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/user/{{userId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"user",
+								"{{userId}}"
+							]
+						},
+						"description": "查询自己的用户信息，期望 code=0"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('code=0 且返回用户信息', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.code).to.eql('0');",
+									"    pm.expect(json.data).to.have.property('userName');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "TC-USER-002 查询不存在的用户（已知BUG-002）",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "token",
+								"value": "{{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/user/99999999",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"user",
+								"99999999"
+							]
+						},
+						"description": "BUG-002 回归用例：期望返回业务错误码或 data 为空；实际 code=0 且无 data"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('BUG-002: 记录实际行为', function () {",
+									"    var json = pm.response.json();",
+									"    console.log('实际返回:', JSON.stringify(json));",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "TC-USER-003 修改用户昵称",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "token",
+								"value": "{{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"userId\": \"{{userId}}\",\n    \"nickName\": \"接口测试改名\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/user/update",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"user",
+								"update"
+							]
+						},
+						"description": "PUT /user/update，body 为 User 实体（userId 必填）"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('code=0 修改成功', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.code).to.eql('0');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "TC-USER-004 模糊查询用户（正常）",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "token",
+								"value": "{{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/fuzzy/query/users?userName=test&curPage=1&pageSize=10",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"fuzzy",
+								"query",
+								"users"
+							],
+							"query": [
+								{
+									"key": "userName",
+									"value": "test"
+								},
+								{
+									"key": "curPage",
+									"value": "1"
+								},
+								{
+									"key": "pageSize",
+									"value": "10"
+								}
+							]
+						},
+						"description": "分页参数 curPage/pageSize 有默认值（1/20）"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('code=0', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.code).to.eql('0');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "TC-USER-005 模糊查询（边界curPage=0）",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "token",
+								"value": "{{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/fuzzy/query/users?userName=test&curPage=0&pageSize=10",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"fuzzy",
+								"query",
+								"users"
+							],
+							"query": [
+								{
+									"key": "userName",
+									"value": "test"
+								},
+								{
+									"key": "curPage",
+									"value": "0"
+								},
+								{
+									"key": "pageSize",
+									"value": "10"
+								}
+							]
+						},
+						"description": "边界值：curPage=0，实测按第 1 页处理不报错"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('code=0 不报错', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.code).to.eql('0');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "TC-USER-006 万能模糊查询",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "token",
+								"value": "{{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/fuzzy/allQuery?key=test",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"fuzzy",
+								"allQuery"
+							],
+							"query": [
+								{
+									"key": "key",
+									"value": "test"
+								}
+							]
+						},
+						"description": "用户/群混合模糊查询"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('code=0', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.code).to.eql('0');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "TC-USER-007 修改密码-旧密码错误（安全用例）",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "token",
+								"value": "{{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/update/password?oldPassword=WrongOld111&newPassword=NewPass@222",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"update",
+								"password"
+							],
+							"query": [
+								{
+									"key": "oldPassword",
+									"value": "WrongOld111"
+								},
+								{
+									"key": "newPassword",
+									"value": "NewPass@222"
+								}
+							]
+						},
+						"description": "安全用例：旧密码错误必须拒绝。期望 code=10006"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('code=10006 旧密码错误', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.code).to.eql('10006');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "TC-USER-008 修改密码-正常流程",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "token",
+								"value": "{{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/update/password?oldPassword=Test@1234&newPassword=NewPass@222",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"update",
+								"password"
+							],
+							"query": [
+								{
+									"key": "oldPassword",
+									"value": "Test@1234"
+								},
+								{
+									"key": "newPassword",
+									"value": "NewPass@222"
+								}
+							]
+						},
+						"description": "oldPassword 需改为当前账号真实密码"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('code=0', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.code).to.eql('0');",
+									"});"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "3-群组模块",
+			"item": [
+				{
+					"name": "TC-GRP-001 获取群聊列表",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "token",
+								"value": "{{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/groups",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"groups"
+							]
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('code=0 且 data 为数组', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.code).to.eql('0');",
+									"    pm.expect(json.data).to.be.an('array');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "TC-GRP-002 查询不存在的群（已知BUG-003）",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "token",
+								"value": "{{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/group/99999999",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"group",
+								"99999999"
+							]
+						},
+						"description": "BUG-003 回归用例：期望业务错误码，实际 10002 系统内部错误"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('BUG-003: 记录实际行为', function () {",
+									"    var json = pm.response.json();",
+									"    console.log('实际返回:', JSON.stringify(json));",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "TC-GRP-003 查询群成员",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "token",
+								"value": "{{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/query/member/99999999",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"query",
+								"member",
+								"99999999"
+							]
+						},
+						"description": "注意：源码为 GET（文档写的是 POST，以源码为准）。不存在群时期望 10008 非成员提示"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('code=10008 非成员', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.code).to.eql('10008');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "TC-GRP-004 模糊查询群（已知BUG-001）",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "token",
+								"value": "{{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/fuzzy/query/groups?groupName=test",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"fuzzy",
+								"query",
+								"groups"
+							],
+							"query": [
+								{
+									"key": "groupName",
+									"value": "test"
+								}
+							]
+						},
+						"description": "BUG-001 回归用例：期望 code=0；实际 10001 数据库异常（Mapper 列名 groupName≠group_name）"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('BUG-001: 期望code=0（当前为缺陷态）', function () {",
+									"    var json = pm.response.json();",
+									"    console.log('实际返回:', JSON.stringify(json));",
+									"});"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "4-系统与图片模块",
+			"item": [
+				{
+					"name": "TC-SYS-001 查询在线人数",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/system/onlineNum",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"system",
+								"onlineNum"
+							]
+						},
+						"description": "免鉴权。注意 BUG-005：该接口含 12 秒休眠，响应慢是已知缺陷"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('code=0', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.code).to.eql('0');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "TC-SYS-002 检查版本（正常）",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/system/checkVersion?versionCode=1&appType=0",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"system",
+								"checkVersion"
+							],
+							"query": [
+								{
+									"key": "versionCode",
+									"value": "1"
+								},
+								{
+									"key": "appType",
+									"value": "0"
+								}
+							]
+						},
+						"description": "免鉴权。versionCode 必填，appType 默认 0"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('code=0', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.code).to.eql('0');",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "TC-SYS-003 检查版本（缺参数，已知BUG-004）",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/system/checkVersion",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"system",
+								"checkVersion"
+							]
+						},
+						"description": "BUG-004 回归用例：期望 10000 参数异常，实际 10002 系统内部错误"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('BUG-004: 记录实际行为', function () {",
+									"    var json = pm.response.json();",
+									"    console.log('实际返回:', JSON.stringify(json));",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "TC-IMG-001 上传base64图片",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"picBase64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==\",\n    \"suffix\": \"png\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/image/upload",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"image",
+								"upload"
+							]
+						},
+						"description": "免鉴权（image 路径在拦截器排除列表）。1x1 测试 PNG"
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('code=0 上传成功', function () {",
+									"    var json = pm.response.json();",
+									"    pm.expect(json.code).to.eql('0');",
+									"});"
+								]
+							}
+						}
+					]
+				}
+			]
+		}
+	]
+}
